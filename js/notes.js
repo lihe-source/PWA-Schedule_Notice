@@ -1,5 +1,5 @@
 /**
- * notes.js — V2_3
+ * notes.js — V5_0
  * 完整重寫：所有 template literal 改為字串串接，確保語法正確
  */
 

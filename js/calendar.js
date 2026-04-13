@@ -1,5 +1,5 @@
 /**
- * calendar.js — V2_1
+ * calendar.js — V5_0
  * 需求1: 進入行事曆頁自動顯示今天事項、依時間排序、可 scroll
  * 需求2: refreshAllViews 改用安全呼叫，避免 drive.js 提早呼叫失敗
  */

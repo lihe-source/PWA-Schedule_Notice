@@ -1,7 +1,6 @@
 /**
- * app.js — V1_6
- * 需求4: 加入設定視圖 switchView('settings')
- * 需求2: 新增記事預設填今日日期
+ * app.js — V5_0
+ * Optimized: version update, timers in bottom nav, smoother UX
  */
 
 'use strict';
@@ -13,7 +12,7 @@ window.AppState = {
   editingNoteId:   null,
   pendingFiles:    [],
   selectedColor:   '#6366f1',
-  appVersion:      'V1_6',
+  appVersion:      'V5_0',
   theme:           'light',
   batchDeleteMode: false,
   batchDeleteIds:  []
@@ -25,9 +24,6 @@ const PRESET_COLORS = [
   '#14b8a6','#3b82f6','#64748b'
 ];
 
-// ══════════════════════════════════════
-// DOMContentLoaded
-// ══════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme(localStorage.getItem('cstn_theme') || 'light');
   initColorPicker();
@@ -37,42 +33,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadAppVersion();
 });
 
-// ══════════════════════════════════════
-// 主題切換
-// ══════════════════════════════════════
+// ══ Theme ══
 function applyTheme(theme) {
   AppState.theme = theme;
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('cstn_theme', theme);
   ['btn-theme-toggle','btn-theme-toggle-sidebar'].forEach(id => {
     const btn = document.getElementById(id);
-    if (btn) { btn.textContent = theme === 'dark' ? '☀️' : '🌙'; }
+    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
   });
-  // 設定頁主題按鈕
   const sb = document.getElementById('settings-theme-btn');
   if (sb) sb.textContent = theme === 'dark' ? '☀️ 切換為亮色' : '🌙 切換為暗色';
 }
 
 function toggleTheme() {
-  // 加上 theme-switching class 禁用 transition，避免底色殘影
   document.documentElement.classList.add('theme-switching');
   applyTheme(AppState.theme === 'dark' ? 'light' : 'dark');
-  // 等下一幀渲染完成後移除（讓主題立即套用，之後的互動才恢復 transition）
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() {
-      document.documentElement.classList.remove('theme-switching');
-    });
-  });
+  requestAnimationFrame(() => requestAnimationFrame(() =>
+    document.documentElement.classList.remove('theme-switching')
+  ));
 }
 
-// ══════════════════════════════════════
-// Service Worker
-// ══════════════════════════════════════
+// ══ Service Worker ══
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
     const reg = await navigator.serviceWorker.register('/CloudSync-Timer-Notes/service-worker.js');
-
     const checkW = r => { if (r.waiting) showUpdateBanner('新版本已就緒'); };
     checkW(reg);
     reg.addEventListener('updatefound', () => {
@@ -81,13 +67,12 @@ async function registerServiceWorker() {
         if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner('新版本已就緒');
       });
     });
-
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!refreshing) { refreshing = true; window.location.reload(); }
     });
     navigator.serviceWorker.addEventListener('message', e => {
-      if (e.data?.type === 'UPDATE_AVAILABLE')     showUpdateBanner(e.data.version);
+      if (e.data?.type === 'UPDATE_AVAILABLE') showUpdateBanner(e.data.version);
       if (e.data?.type === 'NOTIFICATION_CLICKED') {
         switchView('notes');
         setTimeout(() => highlightNote(e.data.noteId), 300);
@@ -110,17 +95,18 @@ async function loadAppVersion() {
     const r = await fetch('/CloudSync-Timer-Notes/version.json?t=' + Date.now());
     const d = await r.json();
     AppState.appVersion = d.version;
-    document.getElementById('app-version') && (document.getElementById('app-version').textContent = d.version);
+    const el = document.getElementById('app-version');
+    if (el) el.textContent = d.version;
+    const lv = document.getElementById('login-version');
+    if (lv) lv.textContent = d.version;
   } catch {}
 }
 
-// ══════════════════════════════════════
-// 視圖切換（加入 settings）
-// ══════════════════════════════════════
+// ══ View Switch ══
 function switchView(viewName) {
   AppState.currentView = viewName;
   document.querySelectorAll('.view-container').forEach(el => el.style.display = 'none');
-  const target = document.getElementById(`view-${viewName}`);
+  const target = document.getElementById('view-' + viewName);
   if (target) target.style.display = 'block';
 
   const titles = { notes:'所有記事', calendar:'行事曆', timers:'倒數計時', settings:'設定' };
@@ -132,7 +118,6 @@ function switchView(viewName) {
   document.querySelectorAll('.bottom-nav-item[data-view]').forEach(b =>
     b.classList.toggle('active', b.dataset.view === viewName));
 
-  // 搜尋只在記事頁
   const sb = document.getElementById('search-bar');
   const si = document.getElementById('search-input');
   const sBtn = document.getElementById('btn-search');
@@ -141,23 +126,18 @@ function switchView(viewName) {
     if (si) si.value = '';
     AppState.searchQuery = '';
   }
-  // 用 visibility 而非 display，避免 layout shift（按鈕始終佔位）
   if (sBtn) sBtn.style.visibility = viewName === 'notes' ? 'visible' : 'hidden';
 
-  // 新增按鈕在 settings/timers 隱藏
   const addBtn = document.getElementById('btn-add-note');
-  // visibility 代替 display，避免 topbar 右側群組寬度跳動
   if (addBtn) addBtn.style.visibility = (viewName === 'timers' || viewName === 'settings') ? 'hidden' : 'visible';
 
-  if (viewName === 'notes')     renderNotes();
-  if (viewName === 'calendar')  renderCalendar();
-  if (viewName === 'timers')    renderTimers();
-  if (viewName === 'settings')  renderSettingsPage();
+  if (viewName === 'notes')    renderNotes();
+  if (viewName === 'calendar') renderCalendar();
+  if (viewName === 'timers')   renderTimers();
+  if (viewName === 'settings') renderSettingsPage();
 }
 
-// ══════════════════════════════════════
-// Modal
-// ══════════════════════════════════════
+// ══ Modal ══
 function openModal(id)  { document.getElementById(id)?.classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id)?.classList.remove('open');
@@ -165,9 +145,7 @@ function closeModal(id) {
 }
 function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) closeModal(id); }
 
-// ══════════════════════════════════════
-// 搜尋
-// ══════════════════════════════════════
+// ══ Search ══
 function toggleSearch() {
   const bar = document.getElementById('search-bar');
   const inp = document.getElementById('search-input');
@@ -183,9 +161,7 @@ function filterNotes(f, btn) {
   renderNotes();
 }
 
-// ══════════════════════════════════════
-// 分類 Modal
-// ══════════════════════════════════════
+// ══ Category Modal ══
 function openCategoryModal() { renderCategoryList(); openModal('category-modal'); }
 function initColorPicker() {
   const c = document.getElementById('color-picker');
@@ -206,22 +182,13 @@ function initColorPicker() {
   AppState.selectedColor = PRESET_COLORS[0];
 }
 
-// ══════════════════════════════════════
-// 使用者選單
-// ══════════════════════════════════════
+// ══ User Menu ══
 function toggleUserMenu() {
   const m = document.getElementById('user-menu');
   if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
 }
-function openNotifySettings() {
-  requestNotificationPermission();
-  const m = document.getElementById('user-menu');
-  if (m) m.style.display = 'none';
-}
 
-// ══════════════════════════════════════
-// iOS / 通知橫幅
-// ══════════════════════════════════════
+// ══ iOS / Notification Banner ══
 function checkIOSInstallBanner() {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
@@ -232,24 +199,21 @@ function checkNotificationBanner() {
   if (Notification.permission === 'default') document.getElementById('notification-banner')?.classList.remove('hidden');
 }
 
-// ══════════════════════════════════════
-// PWA 更新橫幅
-// ══════════════════════════════════════
+// ══ Update Banner ══
 function showUpdateBanner(label) {
   const b = document.getElementById('update-banner');
   if (!b) return;
   const s = document.getElementById('update-banner-text');
-  if (s) s.textContent = `🎉 ${label}`;
+  if (s) s.textContent = '🎉 ' + label;
   b.classList.add('show');
 }
 
 function highlightNote(noteId) {
-  const c = document.querySelector(`[data-note-id="${noteId}"]`);
+  const c = document.querySelector('[data-note-id="' + noteId + '"]');
   if (c) { c.scrollIntoView({behavior:'smooth',block:'center'}); c.style.outline='2px solid var(--accent-primary)'; setTimeout(()=>{c.style.outline='';},3000); }
 }
 function hideLoading() { document.getElementById('loading-overlay')?.classList.add('hidden'); }
 
-// ── 複製文字工具 ──
 function copyText(text) {
   navigator.clipboard.writeText(text)
     .then(() => alert('✅ 已複製！'))

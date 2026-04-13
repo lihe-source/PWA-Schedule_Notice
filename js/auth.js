@@ -1,14 +1,12 @@
 /**
- * auth.js — V1_9
- * 修正：OAuth scope 改為 drive（完整存取），才能跨帳號讀寫共用資料夾
+ * auth.js — V5_0
+ * Improved: smoother token refresh, better error UX, login animation
  */
 
 'use strict';
 
 const GOOGLE_CONFIG = {
   clientId: '715490566550-ics3mpm9jssfqq80600m6f6cnmq7jrp8.apps.googleusercontent.com',
-  // 關鍵修正：從 drive.file 改為 drive
-  // drive.file 只能存取「自己建立的檔案」，跨帳號共用必須用 drive scope
   scopes: [
     'https://www.googleapis.com/auth/drive',
     'profile',
@@ -21,18 +19,13 @@ let accessToken      = null;
 let tokenExpiry      = 0;
 let refreshingPromise = null;
 
-// ══════════════════════════════════════
-// 初始化
-// ══════════════════════════════════════
 function initAuth() {
   if (typeof google === 'undefined') { setTimeout(initAuth, 150); return; }
-
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CONFIG.clientId,
     scope:     GOOGLE_CONFIG.scopes,
     callback:  handleTokenResponse
   });
-
   restoreSession();
 }
 
@@ -53,28 +46,33 @@ function restoreSession() {
 
 function handleGoogleLogin() {
   if (!tokenClient) { alert('Google 登入元件尚未載入，請稍後再試'); return; }
-  // 重新授權時要求 consent，確保取得 drive scope
+  // Show loading state on button
+  var btn = document.getElementById('btn-google-login');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;"></div> 登入中…'; }
   tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 async function handleTokenResponse(response) {
+  var btn = document.getElementById('btn-google-login');
   if (response.error) {
     console.error('[Auth] 授權失敗:', response.error);
-    alert('Google 授權失敗，請重試\n錯誤：' + response.error);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/> 使用 Google 帳號登入'; }
+    if (response.error !== 'popup_closed_by_user') {
+      alert('Google 授權失敗，請重試\n錯誤：' + response.error);
+    }
     return;
   }
   accessToken = response.access_token;
   tokenExpiry = Date.now() + response.expires_in * 1000;
   localStorage.setItem('cstn_access_token', accessToken);
   localStorage.setItem('cstn_token_expiry', String(tokenExpiry));
-  console.log('[Auth] Token 取得成功，scope:', response.scope || '（未回傳）');
   await fetchUserProfile();
 }
 
 async function fetchUserProfile() {
   try {
     const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
+      headers: { 'Authorization': 'Bearer ' + accessToken }
     });
     if (!res.ok) throw new Error('取得使用者資料失敗 ' + res.status);
     const user = await res.json();
@@ -125,18 +123,18 @@ function showLoginScreen() {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display          = 'none';
   hideLoading();
+  // Reset button state
+  var btn = document.getElementById('btn-google-login');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/> 使用 Google 帳號登入'; }
 }
 
 function handleLogout() {
   if (!confirm('確定要登出嗎？')) return;
-
   if (accessToken && typeof google !== 'undefined') {
     google.accounts.oauth2.revoke(accessToken, () => console.log('[Auth] Token 已撤銷'));
   }
-
   ['cstn_access_token','cstn_token_expiry','cstn_user_info',
    'cstn_file_id','cstn_folder_id','cstn_shared_folder_id'].forEach(k => localStorage.removeItem(k));
-
   accessToken = null;
   tokenExpiry = 0;
   DataStore.notes        = [];
@@ -144,15 +142,10 @@ function handleLogout() {
   DataStore.driveFileId  = null;
   DataStore.driveFolderId = null;
   DataStore.isSharedMode  = false;
-
   if (DataStore.syncTimer) clearInterval(DataStore.syncTimer);
-
   showLoginScreen();
 }
 
-// ══════════════════════════════════════
-// 取得有效 Access Token
-// ══════════════════════════════════════
 async function getAccessToken() {
   if (accessToken && tokenExpiry > Date.now() + 5 * 60 * 1000) return accessToken;
   if (refreshingPromise) return refreshingPromise;

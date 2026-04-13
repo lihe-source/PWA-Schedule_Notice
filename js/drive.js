@@ -1,5 +1,5 @@
 /**
- * drive.js — V2_1
+ * drive.js — V5_0
  * 需求2: refreshAllViews 改用 safeRefresh() 安全呼叫，
  *        避免 drive.js 在 notes.js 尚未定義時報錯
  */
