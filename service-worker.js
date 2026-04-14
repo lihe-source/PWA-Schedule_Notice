@@ -1,5 +1,5 @@
 /**
- * service-worker.js — V5_4
+ * service-worker.js — V5_5
  * 
  * 問題根源與修正：
  * 1. 電腦版通知：new Notification() 在背景分頁不顯示
@@ -16,7 +16,7 @@
 
 'use strict';
 
-const APP_VERSION = 'V5_4';
+const APP_VERSION = 'V5_5';
 const CACHE_NAME  = 'cstn-' + APP_VERSION;
 const DB_NAME     = 'cstn_db';
 const DB_VERSION  = 1;
