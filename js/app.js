@@ -1,5 +1,5 @@
 /**
- * app.js — V5_3
+ * app.js — V5_4
  * Optimized: version update, timers in bottom nav, smoother UX
  */
 
@@ -12,7 +12,7 @@ window.AppState = {
   editingNoteId:   null,
   pendingFiles:    [],
   selectedColor:   '#6366f1',
-  appVersion:      'V5_3',
+  appVersion:      'V5_4',
   theme:           'light',
   batchDeleteMode: false,
   batchDeleteIds:  []

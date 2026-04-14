@@ -20,7 +20,7 @@ const DATA_FILE    = 'cstn_data.json';
 const FOLDER_MIME  = 'application/vnd.google-apps.folder';
 const JSON_MIME    = 'application/json';
 const SHARED_KEY   = 'cstn_shared_folder_id';
-const SYNC_MS      = 3000;  // Drive API 輪詢間隔（3秒）
+const SYNC_MS      = 5000;  // Drive API 輪詢間隔（5秒）
 
 window.DataStore = {
   notes:          [],
@@ -225,6 +225,7 @@ function startSyncLoop() {
         if (label) label.textContent = sec <= 1 ? '已同步' : `${sec}秒前同步`;
       }
     }
+    updateUploadBtn();
   }, 1000);
 
   // Page Visibility：切回前台立即同步
@@ -241,30 +242,52 @@ function startSyncLoop() {
 }
 
 // 需求2：手動立即同步
-async function manualSync() {
-  const btn = document.getElementById('btn-manual-sync');
-  if (btn) { btn.disabled = true; btn.textContent = '同步中…'; }
+// ── 上傳按鈕狀態更新 ──
+function updateUploadBtn() {
+  const btn = document.getElementById('btn-upload');
+  if (!btn) return;
+  const pending = DataStore.hasPendingSave || !!DataStore.saveTimer || DataStore.isSaving;
+  btn.disabled = !pending;
+  btn.classList.toggle('has-pending', pending);
+  btn.textContent = DataStore.isSaving ? '上傳中…' : '↑ 立即同步';
+}
+
+// ── 立即同步（僅 Push，有本地變更才可用）──
+async function uploadToDrive() {
+  if (!DataStore.hasPendingSave && !DataStore.saveTimer && !DataStore.isSaving) return;
+  const btn = document.getElementById('btn-upload');
+  if (btn) { btn.disabled = true; btn.textContent = '上傳中…'; }
   try {
-    // 若有待儲存的本地變更，先完成儲存再同步
-    if (DataStore.hasPendingSave || DataStore.isSaving || DataStore.saveTimer) {
-      if (DataStore.saveTimer) {
-        clearTimeout(DataStore.saveTimer);
-        DataStore.saveTimer = null;
-      }
-      await saveDataToDrive();
-    }
+    if (DataStore.saveTimer) { clearTimeout(DataStore.saveTimer); DataStore.saveTimer = null; }
+    await saveDataToDrive();
+    updateSyncStatus('synced', '已上傳');
+  } catch(e) {
+    updateSyncStatus('error', '上傳失敗');
+    console.error('[uploadToDrive]', e);
+  } finally {
+    updateUploadBtn();
+  }
+}
+
+// ── 重新整理（僅 Pull，強制從 Drive 讀取）──
+async function refreshFromDrive() {
+  const btn = document.getElementById('btn-refresh');
+  if (btn) { btn.disabled = true; btn.textContent = '讀取中…'; }
+  try {
     DataStore.lastModified = null; // 強制重載
     await loadDataFromDrive();
     safeRefresh();
     scheduleAllNotifications?.();
-    updateSyncStatus('synced', '立即同步完成');
   } catch(e) {
-    updateSyncStatus('error', '同步失敗');
-    console.error('[manualSync]', e);
+    updateSyncStatus('error', '讀取失敗');
+    console.error('[refreshFromDrive]', e);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '☁️ 立即同步'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻ 重新整理'; }
   }
 }
+
+// 舊名稱相容（SW message 可能呼叫）
+async function manualSync() { await refreshFromDrive(); }
 
 async function syncFromDrive() {
   if (!DataStore.driveFolderId) return;
@@ -370,6 +393,7 @@ function scheduleSave() {
   if (DataStore.saveTimer) clearTimeout(DataStore.saveTimer);
   DataStore.hasPendingSave = true;
   updateSyncStatus('syncing', '待儲存…');
+  updateUploadBtn();
   DataStore.saveTimer = setTimeout(saveDataToDrive, 1500);
 }
 
@@ -415,6 +439,7 @@ async function saveDataToDrive() {
     updateSyncStatus('error', '雲端儲存失敗 - ' + err.message.slice(0,30));
   } finally {
     DataStore.isSaving = false;
+    updateUploadBtn();
   }
 }
 
